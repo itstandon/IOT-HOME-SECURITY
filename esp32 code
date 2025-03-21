@@ -1,0 +1,154 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <HardwareSerial.h>
+#include <Adafruit_Fingerprint.h>
+
+// 🔹 WiFi Credentials
+const char* ssid = "YourWiFiSSID";
+const char* password = "YourWiFiPassword";
+
+// 🔹 Flask Server IP (Change this to your PC’s IP)
+const char* checkUrl = "http://192.168.1.100:5000/get-fingerprints";  
+const char* addUrl = "http://192.168.1.100:5000/add-fingerprint";  
+
+// 🔹 Initialize Fingerprint Sensor (UART2)
+HardwareSerial mySerial(2);
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
+
+void setup() {
+    Serial.begin(115200);
+    delay(3000);
+    
+    // 🔹 Connect to WiFi
+    Serial.print("Connecting to WiFi...");
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\n✅ Connected to WiFi!");
+
+    // 🔹 Initialize Fingerprint Sensor
+    mySerial.begin(57600, SERIAL_8N1, 16, 17);
+    finger.begin(57600);
+    
+    if (finger.verifyPassword()) {
+        Serial.println("✅ Fingerprint sensor detected!");
+    } else {
+        Serial.println("❌ Fingerprint sensor NOT found. Check wiring!");
+        while (1) delay(1);
+    }
+    
+    Serial.println("Place your finger on the sensor...");
+}
+
+void loop() {
+    int fingerID = getFingerprintID();
+
+    if (fingerID > 0) {
+        Serial.println("🔍 Checking if fingerprint is registered...");
+        bool isRegistered = checkFingerprintInDB(fingerID);
+
+        if (isRegistered) {
+            Serial.println("✅ Access Granted!");
+        } else {
+            Serial.println("🚨 Unregistered Fingerprint Detected!");
+            Serial.println("❓ Do you want to register it? (y/n)");
+
+            while (true) {
+                if (Serial.available()) {
+                    char response = Serial.read();
+                    if (response == 'y' || response == 'Y') {
+                        Serial.println("🔄 Registering fingerprint...");
+                        sendFingerprintData(fingerID, 90);
+                        break;
+                    } else if (response == 'n' || response == 'N') {
+                        Serial.println("⚠️ Fingerprint NOT registered.");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    delay(5000);
+}
+
+// 🔹 Function to Get Fingerprint ID
+int getFingerprintID() {
+    Serial.println("🔎 Scanning for fingerprint...");
+    uint8_t p = finger.getImage();
+
+    if (p != FINGERPRINT_OK) return -1;
+
+    p = finger.image2Tz();
+    if (p != FINGERPRINT_OK) return -1;
+
+    p = finger.fingerFastSearch();
+    if (p == FINGERPRINT_OK) {
+        Serial.print("✅ Found ID: ");
+        Serial.println(finger.fingerID);
+        return finger.fingerID;
+    } else {
+        Serial.println("❌ No match found.");
+        return -1;
+    }
+}
+
+// 🔹 Function to Check if Fingerprint Exists in Database
+bool checkFingerprintInDB(int fingerID) {
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        http.begin(checkUrl);
+        int httpResponseCode = http.GET();
+
+        if (httpResponseCode == 200) {
+            String response = http.getString();
+            Serial.println("📜 Database Response: " + response);
+
+            StaticJsonDocument<1024> doc;
+            deserializeJson(doc, response);
+            
+            for (JsonVariant fp : doc.as<JsonArray>()) {
+                if (fp["fingerID"] == fingerID) {
+                    http.end();
+                    return true;
+                }
+            }
+        } else {
+            Serial.print("❌ Error fetching data. HTTP Code: ");
+            Serial.println(httpResponseCode);
+        }
+        http.end();
+    } else {
+        Serial.println("❌ WiFi Disconnected!");
+    }
+    return false;
+}
+
+// 🔹 Function to Register New Fingerprint
+void sendFingerprintData(int fingerID, int confidence) {
+    if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        http.begin(addUrl);
+        http.addHeader("Content-Type", "application/json");
+
+        StaticJsonDocument<200> doc;
+        doc["fingerID"] = fingerID;
+        doc["confidence"] = confidence;
+        String jsonData;
+        serializeJson(doc, jsonData);
+
+        int httpResponseCode = http.POST(jsonData);
+        if (httpResponseCode > 0) {
+            String response = http.getString();
+            Serial.println("✅ Server Response: " + response);
+        } else {
+            Serial.print("❌ Error in sending request. HTTP Code: ");
+            Serial.println(httpResponseCode);
+        }
+        http.end();
+    } else {
+        Serial.println("❌ WiFi Disconnected!");
+    }
+}

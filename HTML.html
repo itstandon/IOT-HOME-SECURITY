@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Security</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>  <!-- MQTT.js -->
+    <script defer src="script.js"></script>  <!-- Custom JavaScript -->
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        #data { margin-top: 20px; font-size: 18px; }
+        .status { padding: 10px; font-weight: bold; border: 1px solid black; display: inline-block; }
+        .alert { color: red; }
+    </style>
+</head>
+<body>
+
+    <h1>Smart Home Security System</h1>
+
+    <div id="data">
+        <p><strong>Motion Detection:</strong> <span id="motion">Waiting...</span></p>
+        <p><strong>Door Status:</strong> <span id="door">Waiting...</span></p>
+        <p><strong>Intrusion Alert:</strong> <span id="intrusion" class="alert">None</span></p>
+    </div>
+
+    <h2>Controls</h2>
+    <button onclick="sendCommand('LOCK_DOOR')">Lock Door</button>
+    <button onclick="sendCommand('UNLOCK_DOOR')">Unlock Door</button>
+
+    <h2>ThingSpeak Data</h2>
+    <p><strong>Last Access Log:</strong> <span id="last-access">Loading...</span></p>
+
+</body>
+</html>
